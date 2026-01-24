@@ -1,6 +1,3 @@
-# distributed-job-system
-Distributed job system set up on two nodes
-
 distributed-job-system/
 ├── api-service/
 │   ├── main.py
