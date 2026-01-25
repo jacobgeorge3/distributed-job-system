@@ -17,38 +17,37 @@ The system is a **distributed job queue**: clients submit jobs over HTTP, a cent
 
 - **Role:** HTTP ingress for job submission.
 - **Stack:** Flask, Redis client.
-- **Endpoint:** `POST /submit` — body must include `task` (or equivalent job payload). Responds with `{"status": "queued", "task": "..."}` or `400` on invalid input.
-- **Queue write:** Uses `RPUSH` to append serialized JSON to the Redis list `job_queue`.
-- **Deployment:** Exposes port 5000; in `docker-compose` it is mapped to 5001.
+- **Endpoints:** `POST /submit` (body: `{"task": "..."}`; returns `{"status": "queued", "task", "id"}` or `400`); `GET /jobs/<id>` (returns `{id, status, task, created_at, result?, completed_at?, error?, failed_at?}` or `404`); `GET /health`.
+- **Queue write:** `RPUSH job_queue` with JSON `{id, task, attempts, created_at}`. Before enqueue, `HSET job:<id>` with `status=queued`, `task`, `created_at` and `EXPIRE` (7 days) so `GET /jobs/<id>` works immediately.
+- **Deployment:** Port 5000; in `docker-compose` mapped to 5001.
 
 ### Worker Service (`worker-service/`)
 
-- **Role:** Queue consumer. Blocks on `job_queue`, deserializes JSON, runs the job logic, and repeats.
+- **Role:** Queue consumer. Blocks on `job_queue`, deserializes JSON, runs the job logic, updates `job:<id>` status, and handles retries/DLQ.
 - **Stack:** Redis client only (no HTTP server).
-- **Queue read:** Uses `BLPOP job_queue` for blocking, FIFO consumption. One worker claims one job at a time.
-- **Processing:** Current implementation sleeps 2 seconds per job and logs start/finish. Job logic can be extended in `worker.py`.
-- **Deployment:** No exposed ports; receives `REDIS_HOST` and `REDIS_PORT` from the environment.
+- **Queue read:** `BLPOP job_queue`; payload is `{id, task, attempts, created_at}`.
+- **Processing:** Sets `job:<id>` to `processing`; on success, `HSET` `status=completed`, `result`, `completed_at`; on exception, `attempts+1`; if `attempts < 3`, `RPUSH job_queue` (retry) and `status=queued`; else `HSET status=failed`, `error`, `failed_at` and `RPUSH dead_letter`. `task == "fail"` raises to simulate failure.
+- **Deployment:** No exposed ports; `REDIS_HOST`, `REDIS_PORT`.
 
 ### Redis
 
-- **Role:** In-memory list used as a FIFO queue.
-- **Key:** `job_queue` (Redis `LIST`).
-- **Protocol:**
-  - **Producers (API):** `RPUSH job_queue <json>`.
-  - **Consumers (workers):** `BLPOP job_queue [timeout]` → one JSON string per pop.
-- **Persistence:** Default Redis image keeps data in memory; configure `redis.conf` / volume if persistence is required.
+- **Lists:** `job_queue` (FIFO; JSON `{id, task, attempts, created_at}`), `dead_letter` (same schema for jobs that failed after 3 attempts).
+- **Hashes:** `job:<id>` — `status`, `task`, `created_at`; when done: `result`, `completed_at` or `error`, `failed_at`. `EXPIRE job:<id> 604800` (7 days) set on creation.
+- **Protocol:** API `RPUSH job_queue` and `HSET job:<id>` on submit; worker `BLPOP`, `HSET` for status, `RPUSH job_queue` (retry) or `RPUSH dead_letter` (DLQ).
+- **Persistence:** Default in-memory; use `appendonly`/volume for durability.
 
 ## Data Flow
 
-1. **Submit:** Client sends `POST /submit` with `{"task": "name"}` (or richer payload). API validates, `RPUSH`es to `job_queue`, returns immediately.
-2. **Queue:** Jobs sit in `job_queue` until a worker is free.
-3. **Process:** A worker `BLPOP`s, gets one JSON, parses it, runs the job (e.g. `time.sleep(2)`), then loops. Other workers block on `BLPOP` and take the next job when one becomes available.
-4. **Ordering:** FIFO per list. If stronger ordering or partitions are needed, the design would need additional keys or structures.
+1. **Submit:** Client sends `POST /submit` with `{"task": "name"}`. API generates `id`, `created_at`, `HSET job:<id>`, `EXPIRE`, `RPUSH job_queue {id,task,attempts:0,created_at}`, returns `{status, task, id}`.
+2. **Queue:** Jobs sit in `job_queue` until a worker is free. `GET /jobs/<id>` reads `job:<id>` (e.g. `queued`, then `processing`, then `completed` or `failed`).
+3. **Process:** Worker `BLPOP`s, `HSET job:<id> status=processing`, runs the job. On success: `HSET status=completed, result, completed_at`. On failure: `attempts+1`; if `< 3` then `RPUSH job_queue` and `status=queued`; else `HSET status=failed, error, failed_at` and `RPUSH dead_letter`.
+4. **Ordering:** FIFO per list. Retries re-enter at the tail.
 
 ## Job Payload
 
-- **Current schema:** `{"task": "<string>"}`. The API checks for the presence of `task`.
-- **Extensibility:** Extra fields in the JSON are passed through to the worker. The worker uses `job.get("task")` and can be extended to handle more fields (retries, priorities, routing, etc.).
+- **Submit body:** `{"task": "<string>"}`. API generates `id` (UUID), `created_at` (ISO), `attempts=0`.
+- **Queue/DLQ JSON:** `{id, task, attempts, created_at}`. Worker uses `attempts` to decide retry vs DLQ.
+- **Extensibility:** Extra fields in the submit body can be passed through; worker can be extended for priorities, routing, etc.
 
 ## Deployment
 
@@ -76,8 +75,7 @@ distributed-job-system/
 
 ## Possible Extensions
 
-- **Retries / DLQ:** On failure, `RPUSH` to a `dead_letter` list or re-queue with attempt count.
-- **Priorities:** Use multiple lists (e.g. `job_queue:high`, `job_queue:low`) and `BLPOP` several keys; or a sorted set with a score.
-- **Result storage:** Worker writes outcomes to Redis (e.g. `HSET result:<id> ...`) or to a DB; API or another service can poll or be notified.
-- **Health checks:** API: HTTP `/health`; worker: heartbeat key or sidecar. Add `healthcheck` in `docker-compose` for each service.
-- **Persistence:** Configure Redis `appendonly yes` and a volume so the queue survives restarts.
+- **Priorities:** Multiple lists (`job_queue:high`, `job_queue`) and `BLPOP` over several keys; or a sorted set.
+- **Healthchecks in Compose:** `healthcheck` for `api` (HTTP `/health`) and `worker` (e.g. Redis `PING`).
+- **Persistence:** Redis `appendonly yes` and a volume so the queue and `job:<id>` (and `dead_letter`) survive restarts.
+- **Reconciliation:** Worker can crash after `BLPOP` but before `HSET completed`; `job:<id>` stays `processing`. A periodic job could scan for stale `processing` and re-queue or mark failed.
