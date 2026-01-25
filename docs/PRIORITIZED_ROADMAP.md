@@ -67,7 +67,7 @@ flowchart TB
 | Job ID on submit | Generate UUID in `submit_job`; include in response and in the JSON enqueued to `job_queue`. |
 | Store status in Redis | Worker writes `HSET job:<id> status completed|failed result <...>`. Set TTL or retention as needed. |
 | `GET /jobs/:id` | Read from Redis; return `{ "id", "status", "task", "result"?, "created_at"? }` or `404`. |
-| Retries + DLQ | Attempt counter in payload; on failure, re-`RPUSH` to `job_queue` until max (e.g., 3), then `RPUSH` to `dead_letter` (or `job_queue:dlq`). |
+| Retries + DLQ | Attempt counter in payload; on failure, re-`RPUSH` to `job_queue` until 4 total attempts (3 retries, "retried up to 3x"), then `RPUSH` to `dead_letter`. Use `MAX_ATTEMPTS=4` and `if attempts < MAX_ATTEMPTS`. |
 
 **Why second:** Status and retries are the natural next step after "it runs." They enable robust integration tests (poll `GET /jobs/:id` until `completed`) and DLQ demos for architecture discussions.
 

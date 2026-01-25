@@ -36,7 +36,6 @@ def submit_job():
     created_at = datetime.now(timezone.utc).isoformat()
     payload = {"id": job_id, "task": data["task"], "attempts": 0, "created_at": created_at}
 
-    # Status hash: allows GET /jobs/:id and worker updates without scanning the queue
     r.hset(f"job:{job_id}", mapping={"status": "queued", "task": data["task"], "created_at": created_at})
     r.expire(f"job:{job_id}", JOB_TTL_SECONDS)
 

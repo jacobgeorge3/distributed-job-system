@@ -26,12 +26,12 @@ The system is a **distributed job queue**: clients submit jobs over HTTP, a cent
 - **Role:** Queue consumer. Blocks on `job_queue`, deserializes JSON, runs the job logic, updates `job:<id>` status, and handles retries/DLQ.
 - **Stack:** Redis client only (no HTTP server).
 - **Queue read:** `BLPOP job_queue`; payload is `{id, task, attempts, created_at}`.
-- **Processing:** Sets `job:<id>` to `processing`; on success, `HSET` `status=completed`, `result`, `completed_at`; on exception, `attempts+1`; if `attempts < 3`, `RPUSH job_queue` (retry) and `status=queued`; else `HSET status=failed`, `error`, `failed_at` and `RPUSH dead_letter`. `task == "fail"` raises to simulate failure.
+- **Processing:** Sets `job:<id>` to `processing`; on success, `HSET` `status=completed`, `result`, `completed_at`; on exception, `attempts+1`; if `attempts < 4` (i.e. under 4 total attempts, so up to 3 retries), `RPUSH job_queue` (retry) and `status=queued`; else `HSET status=failed`, `error`, `failed_at` and `RPUSH dead_letter`. `task == "fail"` raises to simulate failure.
 - **Deployment:** No exposed ports; `REDIS_HOST`, `REDIS_PORT`.
 
 ### Redis
 
-- **Lists:** `job_queue` (FIFO; JSON `{id, task, attempts, created_at}`), `dead_letter` (same schema for jobs that failed after 3 attempts).
+- **Lists:** `job_queue` (FIFO; JSON `{id, task, attempts, created_at}`), `dead_letter` (same schema for jobs that failed after 4 total attempts, i.e. 3 retries).
 - **Hashes:** `job:<id>` — `status`, `task`, `created_at`; when done: `result`, `completed_at` or `error`, `failed_at`. `EXPIRE job:<id> 604800` (7 days) set on creation.
 - **Protocol:** API `RPUSH job_queue` and `HSET job:<id>` on submit; worker `BLPOP`, `HSET` for status, `RPUSH job_queue` (retry) or `RPUSH dead_letter` (DLQ).
 - **Persistence:** Default in-memory; use `appendonly`/volume for durability.
@@ -40,7 +40,7 @@ The system is a **distributed job queue**: clients submit jobs over HTTP, a cent
 
 1. **Submit:** Client sends `POST /submit` with `{"task": "name"}`. API generates `id`, `created_at`, `HSET job:<id>`, `EXPIRE`, `RPUSH job_queue {id,task,attempts:0,created_at}`, returns `{status, task, id}`.
 2. **Queue:** Jobs sit in `job_queue` until a worker is free. `GET /jobs/<id>` reads `job:<id>` (e.g. `queued`, then `processing`, then `completed` or `failed`).
-3. **Process:** Worker `BLPOP`s, `HSET job:<id> status=processing`, runs the job. On success: `HSET status=completed, result, completed_at`. On failure: `attempts+1`; if `< 3` then `RPUSH job_queue` and `status=queued`; else `HSET status=failed, error, failed_at` and `RPUSH dead_letter`.
+3. **Process:** Worker `BLPOP`s, `HSET job:<id> status=processing`, runs the job. On success: `HSET status=completed, result, completed_at`. On failure: `attempts+1`; if `attempts < 4` (3 retries, 4 total) then `RPUSH job_queue` and `status=queued`; else `HSET status=failed, error, failed_at` and `RPUSH dead_letter`.
 4. **Ordering:** FIFO per list. Retries re-enter at the tail.
 
 ## Job Payload

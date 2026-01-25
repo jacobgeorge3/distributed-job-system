@@ -5,7 +5,7 @@ A small distributed job queue using **Flask**, **Redis**, and Python workers. Jo
 ## Architecture
 
 - **API service** — `POST /submit` (returns job `id`), `GET /jobs/<id>` (status), `GET /health`; pushes jobs to a Redis list; status stored in `job:<id>` hashes
-- **Worker service** — blocks on the queue, processes jobs, updates `job:<id>` status, retries up to 3x on failure, then moves to `dead_letter`
+- **Worker service** — blocks on the queue, processes jobs, updates `job:<id>` status, retries up to 3 times (4 total attempts) on failure, then moves to `dead_letter`
 - **Redis** — in-memory queue and broker
 
 See [docs/architecture.md](docs/architecture.md) for a detailed design.
@@ -41,7 +41,7 @@ Response:
 
 Use `id` to poll status: `GET /jobs/<id>` returns `{ "id", "status", "task", "created_at", "result"?, "completed_at"?, "error"?, "failed_at"? }`. Status is `queued`, `processing`, `completed`, or `failed`. `404` if not found.
 
-Workers process jobs in order; each run simulates 2 seconds of work and logs to stdout. Failed jobs are retried up to 3 times, then moved to a dead-letter list (`dead_letter`). Use `{"task": "fail"}` to simulate a failure and exercise retry/DLQ.
+Workers process jobs in order; each run simulates 2 seconds of work and logs to stdout. Failed jobs are retried up to 3 times (4 total attempts), then moved to `dead_letter`. Use `{"task": "fail"}` to simulate failure and exercise retry/DLQ.
 
 ## Project Structure
 

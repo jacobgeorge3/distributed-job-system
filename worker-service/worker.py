@@ -9,7 +9,8 @@ REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
-MAX_ATTEMPTS = 3
+# Max total attempts before DLQ: 4 attempts = 1 initial + 3 retries ("retried up to 3x")
+MAX_ATTEMPTS = 4
 
 print(f"Worker starting, connecting to Redis at {REDIS_HOST}:{REDIS_PORT}")
 
@@ -28,7 +29,6 @@ while True:
     r.hset(f"job:{job_id}", "status", "processing")
 
     try:
-        # Simulated failure for testing: task "fail" raises so we can exercise retry and DLQ
         if task == "fail":
             raise RuntimeError("Simulated failure for testing")
 
@@ -46,6 +46,7 @@ while True:
 
     except Exception as e:
         attempts = attempts + 1
+        # Retry when under max: 4 total attempts = 3 retries. DLQ only when attempts >= MAX_ATTEMPTS.
         if attempts < MAX_ATTEMPTS:
             r.hset(f"job:{job_id}", "status", "queued")
             r.rpush(
