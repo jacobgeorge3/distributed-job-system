@@ -43,7 +43,7 @@
 - **Job ID on submit:** Generate UUID in `submit_job`; include in response and in the JSON stored in the queue.
 - **Status store:** Worker writes outcome to Redis (e.g., `HSET job:<id> status completed|failed result ...`) with TTL or retention policy.
 - **`GET /jobs/:id`:** Reads from Redis; returns `{ "id", "status", "task", "result"?, "created_at"? }` or `404`.
-- **Retries:** Attempt counter in job payload; on exception or explicit failure, re-`RPUSH` to `job_queue` until max attempts (e.g., 3); then `RPUSH` to `dead_letter` (or `job_queue:dlq`).
+- **Retries:** Attempt counter in job payload; on exception or explicit failure, re-`RPUSH` to `job_queue` until 4 total attempts (3 retries, "retried up to 3x"); then `RPUSH` to `dead_letter`. Use `MAX_ATTEMPTS=4` and `if attempts < MAX_ATTEMPTS`.
 - **DLQ:** Separate list or key pattern for failed jobs; optional `GET /jobs/:id` or admin view to inspect.
 
 ### DevOps / SDLC
