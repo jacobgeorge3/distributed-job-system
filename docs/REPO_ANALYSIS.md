@@ -2,7 +2,10 @@
 
 ## Executive Summary
 
-This repository implements a **working distributed job queue**: a Flask API accepts job submissions over HTTP, a Redis list acts as the broker, and Python workers consume jobs via blocking `BLPOP`. The system is **containerized** (Dockerfiles for API and worker, Redis as a service) and **horizontally scalable**—workers can be scaled with `docker compose --scale worker=N`. The architecture is clear, the data flow is documented, and the project runs end-to-end with a single `docker compose up --build`. It is a solid base for a cloud-native or DevOps-style demo, but it lacks CI/CD, tests, health checks, observability, and reliability features (job status, retries, DLQ) that would align it with the bar for Solution Engineer–level proofs of concept and architecture discussions.
+This repository implements a **working distributed job queue**: a Flask API accepts job submissions over HTTP, a Redis list acts as the broker, and Python workers consume jobs via blocking `BLPOP`. 
+The system is **containerized** (Dockerfiles for API and worker, Redis as a service) and **horizontally scalable** — workers can be scaled with `docker compose --scale worker=N`. 
+The architecture is clear, the data flow is documented, and the project runs end-to-end with a single `docker compose up --build`. 
+It is a solid base for a cloud-native or DevOps-style demo, but it lacks CI/CD, tests, health checks, observability, and reliability features (job status, retries, DLQ) that would align it with the bar for Solution Engineer–level proofs of concept and architecture discussions.
 
 ---
 

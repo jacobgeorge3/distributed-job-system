@@ -11,7 +11,7 @@ A short review of the Phase 2 (Reliability) implementation, with a **mentorship 
 | **Job ID on submit** | `uuid.uuid4()` in `submit_job`; included in the API response and in the JSON enqueued to `job_queue`. |
 | **Store status in Redis** | `HSET job:<id>` with `status`, `task`, `created_at`; worker adds `result`/`completed_at` on success or `error`/`failed_at` on final failure. `EXPIRE job:<id> 604800` (7 days) on creation. |
 | **GET /jobs/:id** | `GET /jobs/<job_id>` reads `HGETALL job:<id>`, returns `{id, status, task, created_at, result?, completed_at?, error?, failed_at?}` or `404`. |
-| **Retries + DLQ** | `attempts` in the queue payload; worker on exception increments `attempts`, re-`RPUSH` to `job_queue` if `< 3`, else `RPUSH dead_letter` and `HSET status=failed, error, failed_at`. `task == "fail"` raises to simulate failure. |
+| **Retries + DLQ** | `attempts` in the queue payload; worker on exception increments `attempts`, re-`RPUSH` to `job_queue` if `attempts < MAX_ATTEMPTS` (4), else `RPUSH dead_letter` and `HSET status=failed, error, failed_at`. Four total attempts = 3 retries ("retried up to 3x"). `task == "fail"` raises to simulate failure. |
 
 ---
 
@@ -55,7 +55,7 @@ For interviews: “We carry `attempts` in the queue payload so the worker can de
 
 ### 4. Dead-letter queue (DLQ) instead of discarding or infinite retry
 
-**What we did:** After 3 attempts, the worker `RPUSH`es the same JSON to `dead_letter` and sets `job:<id>` to `status=failed` with `error` and `failed_at`.
+**What we did:** After 4 total attempts (3 retries), the worker `RPUSH`es the same JSON to `dead_letter` and sets `job:<id>` to `status=failed` with `error` and `failed_at`. We use `MAX_ATTEMPTS = 4` and `if attempts < MAX_ATTEMPTS` so that "retried up to 3x" means 3 retries, 4 total attempts.
 
 **Why it matters:** Failed jobs often need **inspection and manual or automated handling**. If you drop them or retry forever, you lose visibility and can create unbounded load. A **DLQ**:
 
@@ -100,7 +100,7 @@ For interviews: “We create the status hash at submit time so clients can poll 
 **Why it matters:** Retry and DLQ are only useful if you can **trigger failures** in a controlled way. A special `task` value lets you:
 
 - **Test retries** (see attempt logs and `status=queued` then `completed` or `failed`).
-- **Test DLQ** (after 3 attempts, `status=failed`, `GET /jobs/<id>`, and `dead_letter`).
+- **Test DLQ** (after 4 total attempts / 3 retries, `status=failed`, `GET /jobs/<id>`, and `dead_letter`).
 - **Demo the behavior** without depending on real infrastructure failures.
 
 For interviews: “We support a test-only `task` value that forces an exception so we can validate retry and DLQ without relying on real failures.”
