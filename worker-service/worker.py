@@ -8,7 +8,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 
-print("Worker started, polling for jobs...")
+print(f"Worker starting, connecting to Redis at {REDIS_HOST}:{REDIS_PORT}")
 
 while True:
     _, job_json = r.blpop("job_queue")  # Blocking pop

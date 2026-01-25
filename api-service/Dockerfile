@@ -1,18 +1,18 @@
-# 1. Base image (Python slim version)
+# Base image
 FROM python:3.11-slim
 
-# 2. Set working directory inside container
+# Working directory
 WORKDIR /app
 
-# 3. Copy dependency file and install dependencies
+# Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. Copy source code into container
+# Application
 COPY main.py .
 
-# 5. Expose port your app will run on
+# Expose HTTP port
 EXPOSE 5000
 
-# 6. Command to run your app
-CMD ["python", "main.py"]
+# Run
+CMD ["python", "-u", "main.py"]
