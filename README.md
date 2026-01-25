@@ -4,8 +4,8 @@ A small distributed job queue using **Flask**, **Redis**, and Python workers. Jo
 
 ## Architecture
 
-- **API service** — accepts job submissions (`POST /submit`), exposes `GET /health` for liveness, and pushes jobs to a Redis list
-- **Worker service** — blocks on the queue, processes jobs, and logs progress
+- **API service** — `POST /submit` (returns job `id`), `GET /jobs/<id>` (status), `GET /health`; pushes jobs to a Redis list; status stored in `job:<id>` hashes
+- **Worker service** — blocks on the queue, processes jobs, updates `job:<id>` status, retries up to 3x on failure, then moves to `dead_letter`
 - **Redis** — in-memory queue and broker
 
 See [docs/architecture.md](docs/architecture.md) for a detailed design.
@@ -36,10 +36,12 @@ curl -X POST http://localhost:5001/submit \
 Response:
 
 ```json
-{"status": "queued", "task": "my-job-name"}
+{"status": "queued", "task": "my-job-name", "id": "550e8400-e29b-41d4-a716-446655440000"}
 ```
 
-Workers process jobs in order; each run simulates 2 seconds of work and logs to stdout.
+Use `id` to poll status: `GET /jobs/<id>` returns `{ "id", "status", "task", "created_at", "result"?, "completed_at"?, "error"?, "failed_at"? }`. Status is `queued`, `processing`, `completed`, or `failed`. `404` if not found.
+
+Workers process jobs in order; each run simulates 2 seconds of work and logs to stdout. Failed jobs are retried up to 3 times, then moved to a dead-letter list (`dead_letter`). Use `{"task": "fail"}` to simulate a failure and exercise retry/DLQ.
 
 ## Project Structure
 

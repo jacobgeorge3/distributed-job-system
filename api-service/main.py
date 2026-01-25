@@ -2,13 +2,29 @@ from flask import Flask, request, jsonify
 import redis
 import json
 import os
+import uuid
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
-# Connect to Redis
+# Connect to Redis (decode_responses=True for string values in hashes/lists)
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+
+# TTL for job status hashes (7 days)
+JOB_TTL_SECONDS = 604800
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Return 200 if Redis is reachable, 503 otherwise."""
+    try:
+        r.ping()
+        return "", 200
+    except (redis.ConnectionError, redis.TimeoutError):
+        return "", 503
+
 
 @app.route("/submit", methods=["POST"])
 def submit_job():
@@ -16,9 +32,36 @@ def submit_job():
     if not data or "task" not in data:
         return jsonify({"error": "Missing 'task' field"}), 400
 
-    # Push job into Redis list
-    r.rpush("job_queue", json.dumps(data))
-    return jsonify({"status": "queued", "task": data["task"]})
+    job_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc).isoformat()
+    payload = {"id": job_id, "task": data["task"], "attempts": 0, "created_at": created_at}
+
+    # Status hash: allows GET /jobs/:id and worker updates without scanning the queue
+    r.hset(f"job:{job_id}", mapping={"status": "queued", "task": data["task"], "created_at": created_at})
+    r.expire(f"job:{job_id}", JOB_TTL_SECONDS)
+
+    r.rpush("job_queue", json.dumps(payload))
+    return jsonify({"status": "queued", "task": data["task"], "id": job_id})
+
+
+@app.route("/jobs/<job_id>", methods=["GET"])
+def get_job(job_id):
+    """Return job status from Redis. 404 if not found."""
+    key = f"job:{job_id}"
+    if not r.exists(key):
+        return jsonify({"error": "Job not found"}), 404
+
+    d = r.hgetall(key)
+    resp = {"id": job_id, "status": d["status"], "task": d["task"], "created_at": d.get("created_at")}
+    if d.get("result") is not None:
+        resp["result"] = d["result"]
+    if d.get("completed_at") is not None:
+        resp["completed_at"] = d["completed_at"]
+    if d.get("error") is not None:
+        resp["error"] = d["error"]
+    if d.get("failed_at") is not None:
+        resp["failed_at"] = d["failed_at"]
+    return jsonify(resp)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
