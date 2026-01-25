@@ -4,7 +4,7 @@ A small distributed job queue using **Flask**, **Redis**, and Python workers. Jo
 
 ## Architecture
 
-- **API service** — accepts job submissions (`POST /submit`) and pushes them to a Redis list
+- **API service** — accepts job submissions (`POST /submit`), exposes `GET /health` for liveness, and pushes jobs to a Redis list
 - **Worker service** — blocks on the queue, processes jobs, and logs progress
 - **Redis** — in-memory queue and broker
 
@@ -22,6 +22,8 @@ docker compose up --build
 
 - API: <http://localhost:5001>
 - Redis: `localhost:6379`
+
+**Health check:** `curl http://localhost:5001/health` — returns 200 when Redis is reachable, 503 otherwise.
 
 ## Submitting a Job
 
