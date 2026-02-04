@@ -16,6 +16,11 @@ services:
     depends_on:
       redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 5
 
   worker:
     build: ./worker-service
@@ -26,4 +31,9 @@ services:
     depends_on:
       redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; redis.Redis(host='redis').ping()"]
+      interval: 10s
+      timeout: 2s
+      retries: 5
 

@@ -137,7 +137,7 @@ http GET http://localhost:5001/jobs/<JOB_ID>
 RESP=$(curl -s -X POST http://localhost:5001/submit \
   -H "Content-Type: application/json" \
   -d '{"task": "hello-world"}')
-JOB_ID=$(echo "$RESP" | jq -r '.id')
+JOB_ID=$(echo "$RESP" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
 echo "Submitted job: $JOB_ID"
 
 # 2. Poll status
