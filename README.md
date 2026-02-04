@@ -48,16 +48,22 @@ Workers process jobs in order; each run simulates 2 seconds of work and logs to 
 ```
 distributed-job-system/
 ├── api-service/
-│   ├── main.py           # Flask app, /submit handler
+│   ├── main.py           # Flask app, /submit, /health, /jobs/<id>
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── worker-service/
 │   ├── worker.py         # Queue consumer loop
 │   ├── requirements.txt
 │   └── Dockerfile
-├── docker-compose.yml    # Redis, API, worker
+├── tests/
+│   ├── conftest.py       # Pytest path setup
+│   └── test_api.py       # Unit tests
+├── .github/workflows/
+│   └── ci.yml            # GitHub Actions: pytest, docker build
+├── docker-compose.yml    # Redis, API, worker (with healthchecks)
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   └── UNIFIED_ROADMAP.md  # Single roadmap (phases, gaps, next steps)
 └── README.md
 ```
 
