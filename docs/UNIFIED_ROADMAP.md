@@ -38,7 +38,7 @@
 | Item | Status |
 |------|--------|
 | Unit tests (pytest): `/health`, `POST /submit`, `GET /jobs/:id` | ✅ Done |
-| Integration test: compose up → submit → poll → completed | 🔜 Next |
+| Integration test: compose up → submit → poll → completed | ✅ Done |
 | GitHub Actions: install deps, pytest, docker build | ✅ Done |
 
 **Outcome:** Resume-worthy DevOps story
