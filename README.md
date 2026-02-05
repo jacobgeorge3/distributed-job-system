@@ -56,8 +56,9 @@ distributed-job-system/
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── tests/
-│   ├── conftest.py       # Pytest path setup
-│   └── test_api.py       # Unit tests
+│   ├── conftest.py         # Pytest path setup
+│   ├── test_api.py         # Unit tests (mocked Redis)
+│   └── test_integration.py # Integration tests (Docker Compose)
 ├── .github/workflows/
 │   └── ci.yml            # GitHub Actions: pytest, docker build
 ├── docker-compose.yml    # Redis, API, worker (with healthchecks)
@@ -85,3 +86,17 @@ docker compose up --build -d && docker compose up -d --scale worker=3
 ```
 
 Jobs are distributed across workers via `BLPOP` on the shared queue.
+
+## Running Tests
+
+**Unit tests** (no Docker, mocked Redis):
+```bash
+pip install -r api-service/requirements.txt
+pytest tests/ -v -m "not integration"
+```
+
+**Integration tests** (requires Docker, spins up full stack):
+```bash
+pip install -r api-service/requirements.txt
+pytest tests/test_integration.py -v -m integration
+```
