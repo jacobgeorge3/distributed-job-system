@@ -15,6 +15,10 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 # TTL for job status hashes (7 days)
 JOB_TTL_SECONDS = 604800
 
+# Redis key for the job queue (LLEN = queue depth)
+JOB_QUEUE_KEY = "job_queue"
+METRICS_KEYS = ("metrics:jobs_submitted", "metrics:jobs_completed", "metrics:jobs_failed")
+
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -39,7 +43,8 @@ def submit_job():
     r.hset(f"job:{job_id}", mapping={"status": "queued", "task": data["task"], "created_at": created_at})
     r.expire(f"job:{job_id}", JOB_TTL_SECONDS)
 
-    r.rpush("job_queue", json.dumps(payload))
+    r.rpush(JOB_QUEUE_KEY, json.dumps(payload))
+    r.incr("metrics:jobs_submitted")
     return jsonify({"status": "queued", "task": data["task"], "id": job_id})
 
 
@@ -61,6 +66,26 @@ def get_job(job_id):
     if d.get("failed_at") is not None:
         resp["failed_at"] = d["failed_at"]
     return jsonify(resp)
+
+
+@app.route("/metrics", methods=["GET"])
+def metrics():
+    """Return job counters and queue depth (LLEN job_queue). Counters are updated by API (submitted) and workers (completed, failed)."""
+    try:
+        counts = {}
+        for key in METRICS_KEYS:
+            val = r.get(key)
+            counts[key.replace("metrics:", "")] = int(val) if val is not None else 0
+        queue_depth = r.llen(JOB_QUEUE_KEY)
+        return jsonify({
+            "jobs_submitted": counts["jobs_submitted"],
+            "jobs_completed": counts["jobs_completed"],
+            "jobs_failed": counts["jobs_failed"],
+            "queue_depth": queue_depth,
+        })
+    except (redis.ConnectionError, redis.TimeoutError):
+        return jsonify({"error": "Redis unreachable"}), 503
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

@@ -58,6 +58,7 @@ def test_submit_valid(client):
     # UUID format
     assert len(data["id"]) == 36
     assert data["id"].count("-") == 4
+    mock_r.incr.assert_called_once_with("metrics:jobs_submitted")
 
 
 def test_get_job_not_found(client):
@@ -90,3 +91,44 @@ def test_get_job_ok(client):
     assert data["task"] == "hello"
     assert data["result"] == "done"
     assert "completed_at" in data
+
+
+def test_metrics_ok(client):
+    """GET /metrics returns 200 with jobs_submitted, jobs_completed, jobs_failed, queue_depth."""
+    c, mock_r = client
+    mock_r.get.side_effect = lambda k: {"metrics:jobs_submitted": "10", "metrics:jobs_completed": "8", "metrics:jobs_failed": "1"}.get(k)
+    mock_r.llen.return_value = 2
+
+    resp = c.get("/metrics")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["jobs_submitted"] == 10
+    assert data["jobs_completed"] == 8
+    assert data["jobs_failed"] == 1
+    assert data["queue_depth"] == 2
+
+
+def test_metrics_missing_counters(client):
+    """GET /metrics returns 0 for counters when Redis keys are missing."""
+    c, mock_r = client
+    mock_r.get.return_value = None
+    mock_r.llen.return_value = 0
+
+    resp = c.get("/metrics")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["jobs_submitted"] == 0
+    assert data["jobs_completed"] == 0
+    assert data["jobs_failed"] == 0
+    assert data["queue_depth"] == 0
+
+
+def test_metrics_redis_down(client):
+    """GET /metrics returns 503 when Redis is unreachable."""
+    import redis
+    c, mock_r = client
+    mock_r.get.side_effect = redis.ConnectionError("connection refused")
+
+    resp = c.get("/metrics")
+    assert resp.status_code == 503
+    assert resp.get_json() == {"error": "Redis unreachable"}

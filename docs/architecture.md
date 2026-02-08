@@ -17,7 +17,7 @@ The system is a **distributed job queue**: clients submit jobs over HTTP, a cent
 
 - **Role:** HTTP ingress for job submission.
 - **Stack:** Flask, Redis client.
-- **Endpoints:** `POST /submit` (body: `{"task": "..."}`; returns `{"status": "queued", "task", "id"}` or `400`); `GET /jobs/<id>` (returns `{id, status, task, created_at, result?, completed_at?, error?, failed_at?}` or `404`); `GET /health`.
+- **Endpoints:** `POST /submit` (body: `{"task": "..."}`; returns `{"status": "queued", "task", "id"}` or `400`); `GET /jobs/<id>` (returns `{id, status, task, created_at, result?, completed_at?, error?, failed_at?}` or `404`); `GET /health`; `GET /metrics` (returns `jobs_submitted`, `jobs_completed`, `jobs_failed`, `queue_depth` from Redis counters and `LLEN job_queue`).
 - **Queue write:** `RPUSH job_queue` with JSON `{id, task, attempts, created_at}`. Before enqueue, `HSET job:<id>` with `status=queued`, `task`, `created_at` and `EXPIRE` (7 days) so `GET /jobs/<id>` works immediately.
 - **Deployment:** Port 5000; in `docker-compose` mapped to 5001.
 

@@ -49,9 +49,9 @@
 
 **Goal:** Visibility into system behavior
 
-- `/metrics` endpoint:
-  - `jobs_submitted`, `jobs_completed`, `jobs_failed`
-  - Queue depth (`LLEN job_queue`)
+- `/metrics` endpoint: ✅ Done
+  - `jobs_submitted`, `jobs_completed`, `jobs_failed` (Redis counters; API and workers update them)
+  - Queue depth (`LLEN job_queue` — jobs waiting in the list, excluding in-flight)
 - Structured logging (JSON): `job_id`, `task`, `status`, `worker_id`
 
 **Outcome:** "Production-ready" credibility
