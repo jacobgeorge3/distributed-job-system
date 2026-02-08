@@ -11,6 +11,7 @@ The API service is the HTTP entry point for the distributed job system. It runs 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check (200 if Redis is reachable, 503 otherwise) |
+| GET | `/metrics` | Job counters and queue depth (200, or 503 if Redis unreachable) |
 | POST | `/submit` | Submit a new job |
 | GET | `/jobs/<job_id>` | Get job status and details |
 
@@ -41,6 +42,33 @@ wget -q -O - http://localhost:5001/health
 
 ```bash
 http GET http://localhost:5001/health
+```
+
+---
+
+## Metrics
+
+Returns counters and queue depth for observability. Counters are stored in Redis: the API increments `jobs_submitted` on each successful submit; workers increment `jobs_completed` and `jobs_failed` when they finish a job or move it to the dead-letter queue. **Queue depth** is the number of jobs currently in the Redis list `job_queue` (i.e. `LLEN job_queue`)—jobs waiting to be picked up by workers, not including in-flight jobs already taken by `BLPOP`.
+
+**Request:** `GET /metrics`  
+**Success (200):** JSON with `jobs_submitted`, `jobs_completed`, `jobs_failed`, `queue_depth`  
+**Error (503):** `{"error": "Redis unreachable"}`
+
+### Example response
+
+```json
+{
+  "jobs_submitted": 42,
+  "jobs_completed": 38,
+  "jobs_failed": 1,
+  "queue_depth": 3
+}
+```
+
+### cURL
+
+```bash
+curl -s http://localhost:5001/metrics | jq
 ```
 
 ---
