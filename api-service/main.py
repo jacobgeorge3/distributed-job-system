@@ -3,9 +3,19 @@ import redis
 import json
 import os
 import uuid
+import logging
 from datetime import datetime, timezone
+from pythonjsonlogger.json import JsonFormatter
 
 app = Flask(__name__)
+
+# Structured logging: JSON to stdout for containers and log collectors
+log = logging.getLogger("api")
+log.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = JsonFormatter("%(message)s %(asctime)s %(levelname)s")
+handler.setFormatter(formatter)
+log.addHandler(handler)
 
 # Connect to Redis (decode_responses=True for string values in hashes/lists)
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
@@ -34,6 +44,7 @@ def health():
 def submit_job():
     data = request.json
     if not data or "task" not in data:
+        log.warning("Submit failed: missing task", extra={"path": "/submit", "status_code": 400})
         return jsonify({"error": "Missing 'task' field"}), 400
 
     job_id = str(uuid.uuid4())
@@ -45,6 +56,10 @@ def submit_job():
 
     r.rpush(JOB_QUEUE_KEY, json.dumps(payload))
     r.incr("metrics:jobs_submitted")
+    log.info(
+        "Job submitted",
+        extra={"job_id": job_id, "task": data["task"], "status": "queued", "path": "/submit", "status_code": 200},
+    )
     return jsonify({"status": "queued", "task": data["task"], "id": job_id})
 
 
@@ -53,6 +68,10 @@ def get_job(job_id):
     """Return job status from Redis. 404 if not found."""
     key = f"job:{job_id}"
     if not r.exists(key):
+        log.info(
+            "Job not found",
+            extra={"job_id": job_id, "status": "not_found", "path": f"/jobs/{job_id}", "status_code": 404},
+        )
         return jsonify({"error": "Job not found"}), 404
 
     d = r.hgetall(key)
@@ -65,6 +84,10 @@ def get_job(job_id):
         resp["error"] = d["error"]
     if d.get("failed_at") is not None:
         resp["failed_at"] = d["failed_at"]
+    log.info(
+        "Job status retrieved",
+        extra={"job_id": job_id, "task": d["task"], "status": d["status"], "path": f"/jobs/{job_id}", "status_code": 200},
+    )
     return jsonify(resp)
 
 
