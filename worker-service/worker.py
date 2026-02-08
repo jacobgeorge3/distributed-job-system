@@ -42,6 +42,7 @@ while True:
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             },
         )
+        r.incr("metrics:jobs_completed")
         print(f"Finished job: {job_id} ({task})")
 
     except Exception as e:
@@ -67,4 +68,5 @@ while True:
                 "dead_letter",
                 json.dumps({"id": job_id, "task": task, "attempts": attempts, "created_at": created_at}),
             )
+            r.incr("metrics:jobs_failed")
             print(f"Job {job_id} failed after {MAX_ATTEMPTS} attempts, moved to DLQ: {e}")
