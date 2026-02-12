@@ -19,43 +19,7 @@ POLL_TIMEOUT = 30    # seconds to wait for job completion
 POLL_INTERVAL = 0.5  # seconds between status polls
 
 
-@pytest.fixture(scope="module")
-def stack():
-    """
-    Start Docker Compose stack, wait for API health, yield.
-    Teardown: docker compose down.
-    """
-    subprocess.run(
-        ["docker", "compose", "up", "-d", "--build"],
-        cwd=PROJECT_ROOT,
-        check=True,
-        capture_output=True,
-    )
 
-    # Wait for API /health to return 200
-    start = time.time()
-    while time.time() - start < HEALTH_TIMEOUT:
-        try:
-            r = requests.get(f"{API_URL}/health", timeout=2)
-            if r.status_code == 200:
-                break
-        except requests.RequestException:
-            pass
-        time.sleep(1)
-    else:
-        subprocess.run(["docker", "compose", "down"], cwd=PROJECT_ROOT, capture_output=True)
-        pytest.fail("API did not become healthy in time")
-
-    yield
-
-    subprocess.run(
-        ["docker", "compose", "down"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-    )
-
-
-@pytest.mark.integration
 def test_submit_and_complete(stack):
     """Submit a job, poll until status is completed."""
     resp = requests.post(

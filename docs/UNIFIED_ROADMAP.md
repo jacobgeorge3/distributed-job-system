@@ -62,10 +62,10 @@
 
 **Goal:** Close the biggest known failure mode
 
-- Background reconciler:
+- Background reconciler: ✅ Done
   - Scan for `status=processing` older than N minutes
   - Requeue or mark failed
-- Document delivery semantics explicitly
+- Document delivery semantics explicitly ✅ Done
 
 **Outcome:** Strong distributed-systems talking point
 

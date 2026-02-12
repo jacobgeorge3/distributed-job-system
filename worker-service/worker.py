@@ -44,7 +44,22 @@ while True:
     attempts = job.get("attempts", 0)
     created_at = job.get("created_at", "")
 
-    r.hset(f"job:{job_id}", "status", "processing")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    # Use pipeline to minimize race condition between setting status and adding to ZSET
+    pipeline = r.pipeline()
+    pipeline.hset(
+        f"job:{job_id}",
+        mapping={
+            "status": "processing",
+            "processing_started_at": now_iso,
+            "worker_id": WORKER_ID,
+        },
+    )
+    # Add to "processing_jobs" ZSET with score = current timestamp
+    pipeline.zadd("processing_jobs", {job_id: datetime.now(timezone.utc).timestamp()})
+    pipeline.execute()
+
     log.info("Job claimed", extra=job_extra(job_id, task, "processing"))
 
     try:
@@ -62,6 +77,9 @@ while True:
             },
         )
         r.incr("metrics:jobs_completed")
+        # Remove from tracking set
+        r.zrem("processing_jobs", job_id)
+
         log.info("Job completed", extra=job_extra(job_id, task, "completed"))
 
     except Exception as e:
@@ -77,6 +95,8 @@ while True:
                 "Job retrying",
                 extra=job_extra(job_id, task, "queued", attempts=attempts, max_attempts=MAX_ATTEMPTS, error=str(e)),
             )
+            # Remove from tracking set (it's back in queue, not processing anymore)
+            r.zrem("processing_jobs", job_id)
         else:
             r.hset(
                 f"job:{job_id}",
@@ -91,6 +111,8 @@ while True:
                 json.dumps({"id": job_id, "task": task, "attempts": attempts, "created_at": created_at}),
             )
             r.incr("metrics:jobs_failed")
+            # Remove from tracking set
+            r.zrem("processing_jobs", job_id)
             log.error(
                 "Job failed, moved to DLQ",
                 extra=job_extra(job_id, task, "failed", attempts=attempts, error=str(e)),
