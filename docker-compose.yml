@@ -37,3 +37,21 @@ services:
       timeout: 2s
       retries: 5
 
+  reconciler:
+    build: ./reconciler-service
+    container_name: reconciler-service
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      STALE_THRESHOLD_SECONDS: ${STALE_THRESHOLD_SECONDS:-300}
+      RECONCILER_INTERVAL: ${RECONCILER_INTERVAL:-60}
+    depends_on:
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; redis.Redis(host='redis').ping()"]
+      interval: 30s
+      timeout: 2s
+      retries: 3
+
+
