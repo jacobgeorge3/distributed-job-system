@@ -20,7 +20,7 @@ jobs:
         run: pip install -r api-service/requirements.txt
 
       - name: Run unit tests
-        run: pytest tests/ -v -m "not integration"
+        run: PYTHONPATH=api-service pytest tests/ -v -m "not integration"
 
   integration:
     runs-on: ubuntu-latest
@@ -35,7 +35,7 @@ jobs:
         run: pip install -r api-service/requirements.txt
 
       - name: Run integration tests
-        run: pytest tests/test_integration.py -v -m integration
+        run: pytest tests/ -v -m integration
 
   build:
     runs-on: ubuntu-latest
