@@ -54,6 +54,7 @@ while True:
             "status": "processing",
             "processing_started_at": now_iso,
             "worker_id": WORKER_ID,
+            "payload": job_json,  # Stored so reconciler can requeue if worker crashes mid-job
         },
     )
     # Add to "processing_jobs" ZSET with score = current timestamp
